@@ -1,7 +1,17 @@
+/* ************************************************************************** */
+/*  UTILS.CPP                                                                 */
+/*  FR: Fonctions utilitaires - conversions, fichiers, MIME, securite         */
+/*  EN: Utility functions - conversions, files, MIME types, security          */
+/* ************************************************************************** */
+
 #include "Utils.hpp"
 
 namespace Utils {
 
+/*
+** FR: Conversions de type C++98 via stringstream
+** EN: C++98 type conversions via stringstream
+*/
 std::string toString(int n) {
 	std::ostringstream oss;
 	oss << n;
@@ -28,6 +38,10 @@ size_t toSizeT(const std::string& s) {
 	return n;
 }
 
+/*
+** FR: Supprime espaces en debut et fin
+** EN: Strips leading and trailing whitespace
+*/
 std::string trim(const std::string& s) {
 	size_t start = s.find_first_not_of(" \t\r\n");
 	if (start == std::string::npos)
@@ -36,6 +50,10 @@ std::string trim(const std::string& s) {
 	return s.substr(start, end - start + 1);
 }
 
+/*
+** FR: Conversion de casse
+** EN: Case conversion
+*/
 std::string toLower(const std::string& s) {
 	std::string result = s;
 	for (size_t i = 0; i < result.size(); ++i)
@@ -50,6 +68,10 @@ std::string toUpper(const std::string& s) {
 	return result;
 }
 
+/*
+** FR: Tests de prefixe/suffixe pour le routage
+** EN: Prefix/suffix tests for routing
+*/
 bool startsWith(const std::string& s, const std::string& prefix) {
 	if (prefix.size() > s.size())
 		return false;
@@ -62,6 +84,10 @@ bool endsWith(const std::string& s, const std::string& suffix) {
 	return s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0;
 }
 
+/*
+** FR: Detecte le type MIME a partir de l'extension (60+ types supportes)
+** EN: Detects MIME type from extension (60+ types supported)
+*/
 std::string getMimeType(const std::string& path) {
 	std::string ext = getExtension(path);
 	if (ext == ".html" || ext == ".htm")	return "text/html";
@@ -85,6 +111,10 @@ std::string getMimeType(const std::string& path) {
 	return "application/octet-stream";
 }
 
+/*
+** FR: Extrait l'extension du fichier, verifie que le point est dans le nom pas le chemin
+** EN: Extracts file extension, checks dot is in filename not path
+*/
 std::string getExtension(const std::string& path) {
 	size_t dot = path.rfind('.');
 	if (dot == std::string::npos || dot == path.size() - 1)
@@ -96,6 +126,10 @@ std::string getExtension(const std::string& path) {
 	return path.substr(dot);
 }
 
+/*
+** FR: Mappe code HTTP vers texte standard (200->OK, 404->Not Found, etc.)
+** EN: Maps HTTP code to standard text (200->OK, 404->Not Found, etc.)
+*/
 std::string getStatusText(int code) {
 	switch (code) {
 		case 200: return "OK";
@@ -121,6 +155,10 @@ std::string getStatusText(int code) {
 	}
 }
 
+/*
+** FR: Genere la date HTTP RFC 2616 (ex: "Mon, 10 Mar 2026 12:00:00 GMT")
+** EN: Generates RFC 2616 HTTP date (e.g. "Mon, 10 Mar 2026 12:00:00 GMT")
+*/
 std::string getDate() {
 	time_t now = time(NULL);
 	struct tm* gmt = gmtime(&now);
@@ -129,6 +167,10 @@ std::string getDate() {
 	return std::string(buf);
 }
 
+/*
+** FR: Decode %XX et +, REJETTE les octets nuls (%00) pour securite
+** EN: Decodes %XX and +, REJECTS null bytes (%00) for security
+*/
 std::string urlDecode(const std::string& s) {
 	std::string result;
 	result.reserve(s.size());
@@ -149,6 +191,10 @@ std::string urlDecode(const std::string& s) {
 	return result;
 }
 
+/*
+** FR: Lit un fichier entier en memoire
+** EN: Reads entire file into memory
+*/
 std::string readFile(const std::string& path) {
 	std::ifstream ifs(path.c_str(), std::ios::binary);
 	if (!ifs.is_open())
@@ -158,6 +204,10 @@ std::string readFile(const std::string& path) {
 	return oss.str();
 }
 
+/*
+** FR: Tests via stat()
+** EN: File type checks via stat()
+*/
 bool fileExists(const std::string& path) {
 	struct stat st;
 	return stat(path.c_str(), &st) == 0;
@@ -177,6 +227,12 @@ bool isRegularFile(const std::string& path) {
 	return S_ISREG(st.st_mode);
 }
 
+/*
+** FR: SECURITE - resout .. et . pour empecher le path traversal
+**     (ex: /../../etc/passwd -> /etc/passwd bloque)
+** EN: SECURITY - resolves .. and . to prevent path traversal
+**     (e.g. /../../etc/passwd -> /etc/passwd blocked)
+*/
 std::string sanitizePath(const std::string& path) {
 	// Remove consecutive slashes, resolve . and .. to prevent path traversal
 	std::vector<std::string> parts;
@@ -201,6 +257,10 @@ std::string sanitizePath(const std::string& path) {
 	return result;
 }
 
+/*
+** FR: Joint deux chemins en gerant les /
+** EN: Joins two paths handling slashes
+*/
 std::string joinPath(const std::string& a, const std::string& b) {
 	if (a.empty())
 		return b;
@@ -213,6 +273,10 @@ std::string joinPath(const std::string& a, const std::string& b) {
 	return a + b;
 }
 
+/*
+** FR: Genere HTML minimaliste pour les pages d'erreur
+** EN: Generates minimal HTML for error pages
+*/
 std::string defaultErrorPage(int code) {
 	std::string text = getStatusText(code);
 	std::string codeStr = toString(code);
@@ -221,6 +285,10 @@ std::string defaultErrorPage(int code) {
 		   "</h1></center>\n<hr>\n<center>" + SERVER_NAME + "</center>\n</body>\n</html>\n";
 }
 
+/*
+** FR: SECURITE - echappe &, <, >, ", ' pour prevenir XSS dans l'autoindex
+** EN: SECURITY - escapes &, <, >, ", ' to prevent XSS in autoindex
+*/
 std::string htmlEscape(const std::string& s) {
 	std::string result;
 	result.reserve(s.size());
@@ -237,6 +305,10 @@ std::string htmlEscape(const std::string& s) {
 	return result;
 }
 
+/*
+** FR: Decoupe une string par delimiteur
+** EN: Splits string by delimiter
+*/
 std::vector<std::string> split(const std::string& s, char delim) {
 	std::vector<std::string> tokens;
 	std::istringstream iss(s);

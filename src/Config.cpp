@@ -1,8 +1,22 @@
+/* ************************************************************************** */
+/*  CONFIG.CPP                                                                */
+/*  FR: Parsing et validation du fichier de configuration style nginx.        */
+/*      Gere les blocs server { } et location { } avec leurs directives.      */
+/*  EN: Parsing and validation of nginx-style configuration file.             */
+/*      Handles server { } and location { } blocks with their directives.     */
+/* ************************************************************************** */
+
 #include "Config.hpp"
 #include "Utils.hpp"
 
 // ─── LocationConfig ──────────────────────────────────────────────────────────
 
+/*
+** FR: Constructeur - valeurs par defaut: path "/", autoindex off,
+**     autorise GET, POST et DELETE.
+** EN: Constructor - default values: path "/", autoindex off,
+**     allows GET, POST and DELETE.
+*/
 LocationConfig::LocationConfig()
 	: path("/"), root(""), index("index.html"), autoindex(false),
 	  redirectCode(0), cgiExtension(""), cgiPath("") {
@@ -13,10 +27,22 @@ LocationConfig::LocationConfig()
 
 // ─── ServerConfig ────────────────────────────────────────────────────────────
 
+/*
+** FR: Constructeur - valeurs par defaut: host 0.0.0.0, port 8080,
+**     max body size 1 Mo (1048576 octets).
+** EN: Constructor - default values: host 0.0.0.0, port 8080,
+**     max body size 1 MB (1048576 bytes).
+*/
 ServerConfig::ServerConfig()
 	: host("0.0.0.0"), port(8080), clientMaxBody(1048576) {
 }
 
+/*
+** FR: Recherche de location par plus long prefixe (longest-prefix match).
+**     Retourne la location dont le path est le plus long prefixe de l'URI.
+** EN: Location lookup by longest-prefix match.
+**     Returns the location whose path is the longest prefix of the URI.
+*/
 const LocationConfig* ServerConfig::findLocation(const std::string& uri) const {
 	const LocationConfig* best = NULL;
 	size_t bestLen = 0;
@@ -43,6 +69,12 @@ const std::vector<ServerConfig>& Config::getServers() const {
 	return _servers;
 }
 
+/*
+** FR: Cherche le serveur correspondant par server_name sur le port donne.
+**     Fallback sur le premier serveur du port si aucun name ne match.
+** EN: Finds matching server by server_name on the given port.
+**     Falls back to the first server on the port if no name matches.
+*/
 const ServerConfig* Config::findServer(const std::string& host, int port) const {
 	const ServerConfig* defaultServer = NULL;
 
@@ -59,6 +91,12 @@ const ServerConfig* Config::findServer(const std::string& host, int port) const 
 	return defaultServer;
 }
 
+/*
+** FR: Parse le fichier de config - lit le contenu, supprime les commentaires,
+**     tokenize et parse les blocs server { }. Valide la config a la fin.
+** EN: Parses config file - reads content, strips comments, tokenizes and
+**     parses server { } blocks. Validates config at the end.
+*/
 void Config::parse(const std::string& filepath) {
 	std::ifstream ifs(filepath.c_str());
 	if (!ifs.is_open())
@@ -90,6 +128,10 @@ void Config::parse(const std::string& filepath) {
 	_validateConfig();
 }
 
+/*
+** FR: Supprime les commentaires (tout ce qui suit '#' jusqu'a fin de ligne).
+** EN: Strips comments (everything after '#' until end of line).
+*/
 void Config::_removeComments() {
 	std::string result;
 	result.reserve(_content.size());
@@ -104,6 +146,10 @@ void Config::_removeComments() {
 	_content = result;
 }
 
+/*
+** FR: Avance le curseur en sautant les espaces, tabs et retours a la ligne.
+** EN: Advances cursor past spaces, tabs and newlines.
+*/
 void Config::_skipWhitespace() {
 	while (_pos < _content.size() &&
 		   (_content[_pos] == ' ' || _content[_pos] == '\t' ||
@@ -111,6 +157,10 @@ void Config::_skipWhitespace() {
 		++_pos;
 }
 
+/*
+** FR: Extrait le prochain token - caracteres speciaux ({, }, ;) ou mot.
+** EN: Extracts next token - special characters ({, }, ;) or word.
+*/
 std::string Config::_nextToken() {
 	_skipWhitespace();
 	if (_pos >= _content.size())
@@ -134,6 +184,12 @@ std::string Config::_nextToken() {
 	return _content.substr(start, _pos - start);
 }
 
+/*
+** FR: Lit le prochain token et verifie qu'il correspond a l'attendu.
+**     Lance une exception si le token ne correspond pas.
+** EN: Reads next token and verifies it matches the expected value.
+**     Throws exception if token does not match.
+*/
 std::string Config::_expectToken(const std::string& expected) {
 	std::string token = _nextToken();
 	if (token != expected)
@@ -141,6 +197,12 @@ std::string Config::_expectToken(const std::string& expected) {
 	return token;
 }
 
+/*
+** FR: Parse la directive listen - accepte host:port ou port seul.
+**     Valide que le port est dans le range 1-65535.
+** EN: Parses listen directive - accepts host:port or port only.
+**     Validates port is in range 1-65535.
+*/
 void Config::_parseListen(ServerConfig& server, const std::string& value) {
 	size_t colon = value.rfind(':');
 	if (colon != std::string::npos) {
@@ -165,6 +227,14 @@ void Config::_parseListen(ServerConfig& server, const std::string& value) {
 		throw std::runtime_error("Invalid port: " + Utils::toString(server.port));
 }
 
+/*
+** FR: Parse un bloc server { } avec toutes ses directives: listen,
+**     server_name, error_page, client_max_body_size, location.
+**     Ajoute une location "/" par defaut si aucune n'est definie.
+** EN: Parses a server { } block with all directives: listen,
+**     server_name, error_page, client_max_body_size, location.
+**     Adds a default "/" location if none is defined.
+*/
 void Config::_parseServer() {
 	_expectToken("{");
 
@@ -233,6 +303,12 @@ void Config::_parseServer() {
 	_servers.push_back(server);
 }
 
+/*
+** FR: Parse un bloc location { } avec ses directives: root, index,
+**     methods, autoindex, return (redirect), upload_path, cgi_ext, cgi_path.
+** EN: Parses a location { } block with directives: root, index,
+**     methods, autoindex, return (redirect), upload_path, cgi_ext, cgi_path.
+*/
 void Config::_parseLocation(ServerConfig& server) {
 	LocationConfig location;
 	location.path = _nextToken();
@@ -294,6 +370,14 @@ void Config::_parseLocation(ServerConfig& server) {
 	server.locations.push_back(location);
 }
 
+/*
+** FR: Valide la config - verifie les ports dupliques (autorise le virtual
+**     hosting avec server_names differents), assigne un root "www" par
+**     defaut aux locations qui n'en ont pas.
+** EN: Validates config - checks duplicate ports (allows virtual hosting
+**     with different server_names), assigns default "www" root to
+**     locations that don't have one.
+*/
 void Config::_validateConfig() {
 	for (size_t i = 0; i < _servers.size(); ++i) {
 		ServerConfig& server = _servers[i];

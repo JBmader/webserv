@@ -1,7 +1,20 @@
+/* ************************************************************************** */
+/*  MAIN.CPP                                                                  */
+/*  FR: Point d'entree du serveur - charge la config et lance la boucle       */
+/*  EN: Server entry point - loads config and starts the event loop           */
+/* ************************************************************************** */
+
 #include "Webserv.hpp"
 #include "Config.hpp"
 #include "Server.hpp"
 
+/*
+** FR: Fonction principale - parse les arguments, charge le fichier de config,
+**     cree le serveur et lance la boucle evenementielle. En cas d'erreur,
+**     affiche le message et retourne 1.
+** EN: Main function - parses arguments, loads config file, creates the server
+**     and runs the event loop. On error, prints message and returns 1.
+*/
 int main(int argc, char **argv) {
 	std::string configPath = DEFAULT_CONFIG;
 
