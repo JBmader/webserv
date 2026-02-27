@@ -1,15 +1,37 @@
+/* ************************************************************************** */
+/*  SERVER.CPP                                                                */
+/*  FR: Coeur du serveur HTTP - boucle poll(), gestion des connexions,        */
+/*      lecture/ecriture non-bloquante, gestion CGI et timeouts               */
+/*  EN: HTTP server core - poll() loop, connection management,                */
+/*      non-blocking I/O, CGI handling and timeouts                           */
+/* ************************************************************************** */
+
 #include "Server.hpp"
 #include "Utils.hpp"
 
 static bool g_running = true;
 
+/*
+** FR: Handler SIGINT/SIGTERM pour arret propre du serveur.
+**     Met le flag global a false pour sortir de la boucle poll.
+** EN: SIGINT/SIGTERM signal handler for graceful server shutdown.
+**     Sets global flag to false to exit the poll loop.
+*/
 static void signalHandler(int sig) {
 	(void)sig;
 	g_running = false;
 }
 
+/*
+** FR: Constructeur - stocke la reference vers la config.
+** EN: Constructor - stores reference to config.
+*/
 Server::Server(const Config& config) : _config(config), _running(false) {}
 
+/*
+** FR: Destructeur - libere tous les clients et ferme les sockets d'ecoute.
+** EN: Destructor - frees all clients and closes listen sockets.
+*/
 Server::~Server() {
 	// Clean up clients
 	for (std::map<int, Client*>::iterator it = _clients.begin();
@@ -29,6 +51,12 @@ void Server::stop() {
 	_running = false;
 }
 
+/*
+** FR: Lance le serveur - initialise les signaux (ignore SIGPIPE),
+**     cree les sockets d'ecoute et demarre la boucle poll.
+** EN: Runs the server - initializes signals (ignores SIGPIPE),
+**     creates listen sockets and starts the poll loop.
+*/
 void Server::run() {
 	signal(SIGPIPE, SIG_IGN);
 	signal(SIGINT, signalHandler);
@@ -47,6 +75,12 @@ void Server::run() {
 	LOG_INFO("Server stopped");
 }
 
+/*
+** FR: Parcourt la config, cree un socket d'ecoute par couple host:port
+**     unique. Evite les doublons via un set de paires deja creees.
+** EN: Iterates config, creates one listen socket per unique host:port
+**     pair. Avoids duplicates via a set of already-created pairs.
+*/
 void Server::_createListenSockets() {
 	const std::vector<ServerConfig>& servers = _config.getServers();
 	std::set<std::pair<std::string, int> > created;
@@ -67,6 +101,12 @@ void Server::_createListenSockets() {
 	}
 }
 
+/*
+** FR: Cree un socket TCP IPv4 non-bloquant avec SO_REUSEADDR,
+**     bind sur host:port et listen. Resout le hostname si necessaire.
+** EN: Creates a non-blocking IPv4 TCP socket with SO_REUSEADDR,
+**     binds to host:port and listens. Resolves hostname if needed.
+*/
 int Server::_createSocket(const std::string& host, int port) {
 	int fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (fd < 0) {
@@ -132,6 +172,10 @@ int Server::_createSocket(const std::string& host, int port) {
 
 // ─── Poll helpers ────────────────────────────────────────────────────────────
 
+/*
+** FR: Ajoute un fd au tableau poll avec les evenements specifies.
+** EN: Adds a fd to the poll array with the specified events.
+*/
 void Server::_addPollFd(int fd, short events) {
 	struct pollfd pfd;
 	pfd.fd = fd;
@@ -140,6 +184,10 @@ void Server::_addPollFd(int fd, short events) {
 	_pollfds.push_back(pfd);
 }
 
+/*
+** FR: Retire un fd du tableau poll.
+** EN: Removes a fd from the poll array.
+*/
 void Server::_removePollFd(int fd) {
 	for (std::vector<struct pollfd>::iterator it = _pollfds.begin();
 		 it != _pollfds.end(); ++it) {
@@ -152,6 +200,16 @@ void Server::_removePollFd(int fd) {
 
 // ─── Event loop ──────────────────────────────────────────────────────────────
 
+/*
+** FR: COEUR DU SERVEUR - boucle poll() unique qui surveille TOUS les fds
+**     (listen, client, CGI) en lecture ET ecriture simultanement.
+**     Un seul read/write par fd par cycle. Gere aussi le traitement
+**     des requetes, les completions CGI, les timeouts et le nettoyage.
+** EN: HEART OF THE SERVER - single poll() loop monitoring ALL fds
+**     (listen, client, CGI) for read AND write simultaneously.
+**     One read/write per fd per cycle. Also handles request processing,
+**     CGI completions, timeouts and cleanup.
+*/
 void Server::_pollLoop() {
 	while (_running && g_running) {
 		// Update poll events for clients
@@ -298,6 +356,12 @@ void Server::_pollLoop() {
 	}
 }
 
+/*
+** FR: Accepte une connexion entrante, set non-blocking, cree un Client
+**     avec le max body size de la config du serveur correspondant.
+** EN: Accepts incoming connection, sets non-blocking, creates a Client
+**     with max body size from the matching server config.
+*/
 void Server::_acceptConnection(int listenFd) {
 	struct sockaddr_in clientAddr;
 	socklen_t addrLen = sizeof(clientAddr);
@@ -333,6 +397,12 @@ void Server::_acceptConnection(int listenFd) {
 	_addPollFd(clientFd, POLLIN | POLLOUT);
 }
 
+/*
+** FR: Lit les donnees du client via recv non-bloquant.
+**     Supprime le client si la lecture echoue (deconnexion).
+** EN: Reads client data via non-blocking recv.
+**     Removes client if read fails (disconnection).
+*/
 void Server::_handleClientRead(int fd) {
 	std::map<int, Client*>::iterator it = _clients.find(fd);
 	if (it == _clients.end())
@@ -343,6 +413,12 @@ void Server::_handleClientRead(int fd) {
 	}
 }
 
+/*
+** FR: Ecrit les donnees vers le client via send non-bloquant.
+**     Supprime le client si l'ecriture echoue.
+** EN: Writes data to client via non-blocking send.
+**     Removes client if write fails.
+*/
 void Server::_handleClientWrite(int fd) {
 	std::map<int, Client*>::iterator it = _clients.find(fd);
 	if (it == _clients.end())
@@ -353,6 +429,12 @@ void Server::_handleClientWrite(int fd) {
 	}
 }
 
+/*
+** FR: Lit la sortie du processus CGI via le pipe de sortie.
+**     Retire le pipe du poll quand la lecture est terminee.
+** EN: Reads CGI process output via the output pipe.
+**     Removes pipe from poll when reading is complete.
+*/
 void Server::_handleCGIRead(int fd) {
 	for (std::map<int, Client*>::iterator it = _clients.begin();
 		 it != _clients.end(); ++it) {
@@ -367,6 +449,12 @@ void Server::_handleCGIRead(int fd) {
 	}
 }
 
+/*
+** FR: Ecrit le body de la requete vers le stdin du CGI via le pipe d'entree.
+**     Retire le pipe du poll quand l'ecriture est terminee.
+** EN: Writes request body to CGI stdin via the input pipe.
+**     Removes pipe from poll when writing is complete.
+*/
 void Server::_handleCGIWrite(int fd) {
 	for (std::map<int, Client*>::iterator it = _clients.begin();
 		 it != _clients.end(); ++it) {
@@ -381,6 +469,12 @@ void Server::_handleCGIWrite(int fd) {
 	}
 }
 
+/*
+** FR: Nettoie un client - retire les pipes CGI du poll si actifs,
+**     retire le fd client du poll, libere la memoire et supprime de la map.
+** EN: Cleans up a client - removes CGI pipes from poll if active,
+**     removes client fd from poll, frees memory and erases from map.
+*/
 void Server::_removeClient(int fd) {
 	std::map<int, Client*>::iterator it = _clients.find(fd);
 	if (it != _clients.end()) {
@@ -398,6 +492,12 @@ void Server::_removeClient(int fd) {
 	}
 }
 
+/*
+** FR: Deconnecte les clients inactifs apres CLIENT_TIMEOUT secondes.
+**     Ignore les clients en attente de CGI (ils ont leur propre timeout).
+** EN: Disconnects idle clients after CLIENT_TIMEOUT seconds.
+**     Skips clients waiting for CGI (they have their own timeout).
+*/
 void Server::_checkTimeouts() {
 	std::vector<int> timedOut;
 	for (std::map<int, Client*>::iterator it = _clients.begin();
