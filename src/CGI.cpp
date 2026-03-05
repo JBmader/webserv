@@ -1,11 +1,25 @@
+/* ************************************************************************** */
+/*  CGI.CPP                                                                   */
+/*  FR: Gestionnaire CGI - fork, pipes, et execution de scripts (Python)      */
+/*  EN: CGI handler - fork, pipes, and script execution (Python)              */
+/* ************************************************************************** */
+
 #include "CGI.hpp"
 #include "Utils.hpp"
 
+/*
+** FR: Constructeur - initialise pid=-1, fds=-1, pas termine
+** EN: Constructor - initializes pid=-1, fds=-1, not done
+*/
 CGI::CGI()
 	: _pid(-1), _inputFd(-1), _outputFd(-1), _done(false),
 	  _bodyWritten(false), _startTime(0), _bodyWriteOffset(0) {
 }
 
+/*
+** FR: Destructeur - ferme tous les pipes, tue le processus enfant s'il tourne encore
+** EN: Destructor - closes all pipes, kills child process if still running
+*/
 CGI::~CGI() {
 	closeFds();
 	if (_pid > 0) {
@@ -14,6 +28,10 @@ CGI::~CGI() {
 	}
 }
 
+/*
+** FR: Ferme proprement les pipes stdin et stdout du CGI
+** EN: Cleanly closes CGI stdin and stdout pipes
+*/
 void CGI::closeFds() {
 	if (_inputFd >= 0) {
 		close(_inputFd);
@@ -32,6 +50,14 @@ bool CGI::isDone() const { return _done; }
 time_t CGI::getStartTime() const { return _startTime; }
 const std::string& CGI::getOutput() const { return _output; }
 
+/*
+** FR: Construit les variables d'environnement CGI/1.1 (REQUEST_METHOD, QUERY_STRING,
+**     CONTENT_TYPE, CONTENT_LENGTH, SCRIPT_FILENAME, SERVER_NAME, SERVER_PORT, etc.)
+**     + convertit tous les headers HTTP en HTTP_XXX. Conforme a la RFC 3875.
+** EN: Builds CGI/1.1 environment variables (REQUEST_METHOD, QUERY_STRING,
+**     CONTENT_TYPE, CONTENT_LENGTH, SCRIPT_FILENAME, SERVER_NAME, SERVER_PORT, etc.)
+**     + converts all HTTP headers to HTTP_XXX. RFC 3875 compliant.
+*/
 std::vector<std::string> CGI::_buildEnv(const Request& req,
 										const LocationConfig& location,
 										const ServerConfig& server,
@@ -69,6 +95,18 @@ std::vector<std::string> CGI::_buildEnv(const Request& req,
 	return env;
 }
 
+/*
+** FR: COEUR DU CGI - cree 2 pipes (stdin + stdout), fork le processus.
+**     L'ENFANT: ferme les bouts inutiles des pipes, dup2 stdin/stdout, cd vers
+**     le repertoire du script, execve l'interpreteur.
+**     LE PARENT: ferme les bouts inutiles, garde les fds pour poll(), set non-blocking.
+**     C'est le mecanisme fork+pipe+execve classique Unix.
+** EN: CGI CORE - creates 2 pipes (stdin + stdout), forks process.
+**     CHILD: closes unused pipe ends, dup2 stdin/stdout, chdir to script dir,
+**     execve interpreter.
+**     PARENT: closes unused ends, keeps fds for poll(), sets non-blocking.
+**     Classic Unix fork+pipe+execve pattern.
+*/
 bool CGI::execute(const Request& req, const LocationConfig& location,
 				  const ServerConfig& server, const std::string& scriptPath) {
 	// Resolve to absolute path before forking
@@ -160,6 +198,10 @@ bool CGI::execute(const Request& req, const LocationConfig& location,
 	return true;
 }
 
+/*
+** FR: Prepare le body a ecrire dans stdin du CGI. Si body vide, ferme le pipe immediatement.
+** EN: Prepares body to write to CGI stdin. If body empty, closes pipe immediately.
+*/
 void CGI::setBody(const std::string& body) {
 	_bodyToWrite = body;
 	_bodyWriteOffset = 0;
@@ -170,6 +212,12 @@ void CGI::setBody(const std::string& body) {
 	}
 }
 
+/*
+** FR: Ecrit le body dans stdin du CGI de maniere non-bloquante via poll(POLLOUT).
+**     Gere l'offset pour envoi partiel. Ferme le pipe quand tout est ecrit.
+** EN: Writes body to CGI stdin non-blocking via poll(POLLOUT).
+**     Manages offset for partial writes. Closes pipe when done.
+*/
 bool CGI::writeBody() {
 	if (_bodyWritten || _inputFd < 0)
 		return true;
@@ -207,6 +255,12 @@ bool CGI::isBodyWritten() const {
 	return _bodyWritten;
 }
 
+/*
+** FR: Lit la sortie du CGI depuis stdout de maniere non-bloquante.
+**     n=0 signifie EOF (CGI a fini d'ecrire). n<0 signifie EAGAIN (pas encore de donnees).
+** EN: Reads CGI output from stdout non-blocking.
+**     n=0 means EOF (CGI finished writing). n<0 means EAGAIN (no data yet).
+*/
 bool CGI::readOutput() {
 	if (_outputFd < 0)
 		return true;
@@ -233,6 +287,12 @@ bool CGI::readOutput() {
 	return false;
 }
 
+/*
+** FR: Recupere le processus zombie avec waitpid(WNOHANG) - NON BLOQUANT.
+**     Essentiel pour eviter l'accumulation de zombies.
+** EN: Reaps zombie process with waitpid(WNOHANG) - NON BLOCKING.
+**     Essential to prevent zombie accumulation.
+*/
 bool CGI::reapChild() {
 	if (_pid <= 0)
 		return true;
@@ -245,12 +305,20 @@ bool CGI::reapChild() {
 	return false;
 }
 
+/*
+** FR: Verifie si le CGI depasse CGI_TIMEOUT (10s)
+** EN: Checks if CGI exceeds CGI_TIMEOUT (10s)
+*/
 bool CGI::checkTimeout() {
 	if (_done)
 		return false;
 	return (time(NULL) - _startTime) >= CGI_TIMEOUT;
 }
 
+/*
+** FR: Envoie SIGKILL au processus CGI, waitpid bloquant (safe apres SIGKILL), ferme tous les fds
+** EN: Sends SIGKILL to CGI process, blocking waitpid (safe after SIGKILL), closes all fds
+*/
 void CGI::kill() {
 	if (_pid > 0) {
 		::kill(_pid, SIGKILL);

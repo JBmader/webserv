@@ -1,3 +1,9 @@
+/* ************************************************************************** */
+/*  RESPONSE.CPP                                                              */
+/*  FR: Constructeur de reponses HTTP (GET, POST upload, DELETE, CGI, erreurs) */
+/*  EN: HTTP response builder (GET, POST upload, DELETE, CGI, errors)          */
+/* ************************************************************************** */
+
 #include "Response.hpp"
 #include "Router.hpp"
 #include "Utils.hpp"
@@ -9,6 +15,12 @@ const std::string& Response::getData() const { return _data; }
 bool Response::isReady() const { return _ready; }
 size_t Response::totalSize() const { return _data.size(); }
 
+/*
+** FR: Assemble la reponse HTTP complete: status line + headers + body.
+**     Ajoute automatiquement Date, Server, Content-Length, Connection.
+** EN: Assembles complete HTTP response: status line + headers + body.
+**     Auto-adds Date, Server, Content-Length, Connection.
+*/
 void Response::_buildResponse(int code, const std::map<std::string, std::string>& headers,
 							  const std::string& body) {
 	std::ostringstream oss;
@@ -36,6 +48,12 @@ void Response::_buildResponse(int code, const std::map<std::string, std::string>
 	_ready = true;
 }
 
+/*
+** FR: Construit page d'erreur - cherche page personnalisee dans la config,
+**     sinon genere HTML par defaut
+** EN: Builds error page - looks for custom page in config, else generates
+**     default HTML
+*/
 void Response::buildError(int code, const ServerConfig& server) {
 	// Check for custom error page
 	std::map<int, std::string>::const_iterator it = server.errorPages.find(code);
@@ -55,6 +73,10 @@ void Response::buildError(int code, const ServerConfig& server) {
 	_buildResponse(code, headers, body);
 }
 
+/*
+** FR: Construit reponse de redirection (301/302/307) avec header Location
+** EN: Builds redirect response (301/302/307) with Location header
+*/
 void Response::buildRedirect(int code, const std::string& url) {
 	std::map<std::string, std::string> headers;
 	headers["Location"] = url;
@@ -65,6 +87,12 @@ void Response::buildRedirect(int code, const std::string& url) {
 	_buildResponse(code, headers, body);
 }
 
+/*
+** FR: DISPATCH PRINCIPAL - verifie redirect, verifie methode autorisee
+**     (sinon 405 avec header Allow), puis dispatche vers handleGet/Post/Delete
+** EN: MAIN DISPATCH - checks redirect, checks allowed method (else 405 with
+**     Allow header), then dispatches to handleGet/Post/Delete
+*/
 void Response::build(const Request& req, const ServerConfig& server,
 					 const LocationConfig& location) {
 	// Check for redirect
@@ -104,6 +132,14 @@ std::string Response::_resolvePath(const Request& req, const LocationConfig& loc
 	return Router::resolvePath(req.getPath(), location);
 }
 
+/*
+** FR: Sert fichier statique ou listing de repertoire (autoindex). Si
+**     repertoire: cherche index.html, sinon autoindex, sinon 403. Si
+**     fichier: verifie existence et permissions (404/403).
+** EN: Serves static file or directory listing. If dir: tries index.html,
+**     then autoindex, else 403. If file: checks existence and permissions
+**     (404/403).
+*/
 void Response::_handleGet(const Request& req, const ServerConfig& server,
 						  const LocationConfig& location) {
 	std::string path = _resolvePath(req, location);
@@ -134,6 +170,10 @@ void Response::_handleGet(const Request& req, const ServerConfig& server,
 	buildError(404, server);
 }
 
+/*
+** FR: Lit fichier, detecte type MIME, construit reponse 200
+** EN: Reads file, detects MIME type, builds 200 response
+*/
 void Response::_serveFile(const std::string& path, const ServerConfig& server) {
 	if (!Utils::fileExists(path)) {
 		buildError(404, server);
@@ -150,6 +190,12 @@ void Response::_serveFile(const std::string& path, const ServerConfig& server) {
 	_buildResponse(200, headers, body);
 }
 
+/*
+** FR: Genere page HTML listant le contenu du repertoire, avec protection
+**     XSS (htmlEscape)
+** EN: Generates HTML page listing directory contents, with XSS protection
+**     (htmlEscape)
+*/
 void Response::_serveAutoindex(const std::string& path, const std::string& uri) {
 	DIR* dir = opendir(path.c_str());
 	if (!dir) {
@@ -198,6 +244,10 @@ void Response::_serveAutoindex(const std::string& path, const std::string& uri) 
 	_buildResponse(200, headers, body);
 }
 
+/*
+** FR: Si upload_path configure -> traite upload, sinon se comporte comme GET
+** EN: If upload_path configured -> handles upload, else behaves like GET
+*/
 void Response::_handlePost(const Request& req, const ServerConfig& server,
 						   const LocationConfig& location) {
 	// Check if it's a CGI request — but CGI is handled by the Client, not here
@@ -211,6 +261,14 @@ void Response::_handlePost(const Request& req, const ServerConfig& server,
 	_handleGet(req, server, location);
 }
 
+/*
+** FR: Parse multipart/form-data pour extraire fichier, sanitize nom de
+**     fichier (retire / et \), ecrit dans le repertoire d'upload. Cree le
+**     repertoire s'il n'existe pas. Reponse 201 Created.
+** EN: Parses multipart/form-data to extract file, sanitizes filename
+**     (strips / and \), writes to upload dir. Creates dir if needed.
+**     201 Created response.
+*/
 void Response::_handleUpload(const Request& req, const LocationConfig& location,
 							 const ServerConfig& server) {
 	std::string contentType = req.getHeader("Content-Type");
@@ -315,6 +373,11 @@ void Response::_handleUpload(const Request& req, const LocationConfig& location,
 	_buildResponse(201, headers, responseBody);
 }
 
+/*
+** FR: Verifie existence du fichier, interdit suppression de repertoire (403),
+**     supprime le fichier
+** EN: Checks file existence, forbids directory deletion (403), removes the file
+*/
 void Response::_handleDelete(const Request& req, const ServerConfig& server,
 							 const LocationConfig& location) {
 	std::string path = _resolvePath(req, location);
@@ -340,6 +403,12 @@ void Response::_handleDelete(const Request& req, const ServerConfig& server,
 	_buildResponse(200, headers, body);
 }
 
+/*
+** FR: Parse la sortie CGI (headers\r\n\r\nbody), extrait Status header si
+**     present, reconstruit la reponse HTTP
+** EN: Parses CGI output (headers\r\n\r\nbody), extracts Status header if
+**     present, rebuilds HTTP response
+*/
 void Response::setCGIResponse(const std::string& cgiOutput, const ServerConfig& server) {
 	// CGI output format: headers\r\n\r\nbody (or \n\n)
 	std::string lineEnd = "\r\n";
