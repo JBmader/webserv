@@ -1,0 +1,54 @@
+#ifndef CGI_HPP
+# define CGI_HPP
+
+# include "Webserv.hpp"
+# include "Config.hpp"
+# include "Request.hpp"
+
+class CGI {
+public:
+	CGI();
+	~CGI();
+
+	// Setup and execute CGI
+	bool	execute(const Request& req, const LocationConfig& location,
+					const ServerConfig& server, const std::string& scriptPath);
+
+	// Get pipe FDs for poll() integration
+	int		getOutputFd() const;
+	int		getInputFd() const;
+	pid_t	getPid() const;
+	bool	isDone() const;
+	time_t	getStartTime() const;
+
+	// Feed body to CGI stdin (non-blocking)
+	bool	writeBody(const std::string& body);
+
+	// Read CGI output (non-blocking)
+	bool	readOutput();
+	const std::string&	getOutput() const;
+
+	// Cleanup
+	void	closeFds();
+	bool	checkTimeout();
+	void	kill();
+
+private:
+	pid_t		_pid;
+	int			_inputFd;		// pipe to CGI stdin
+	int			_outputFd;		// pipe from CGI stdout
+	std::string	_output;
+	bool		_done;
+	bool		_bodyWritten;
+	time_t		_startTime;
+
+	std::vector<std::string>	_buildEnv(const Request& req,
+										  const LocationConfig& location,
+										  const ServerConfig& server,
+										  const std::string& scriptPath);
+
+	CGI(const CGI&);
+	CGI& operator=(const CGI&);
+};
+
+#endif
