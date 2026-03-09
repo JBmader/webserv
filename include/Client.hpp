@@ -17,7 +17,7 @@ public:
 		STATE_DONE
 	};
 
-	Client(int fd, const std::string& host, int port);
+	Client(int fd, const std::string& host, int port, size_t maxBodySize);
 	~Client();
 
 	// I/O
@@ -42,15 +42,16 @@ public:
 	void		finalizeCGI();
 
 private:
-	int				_fd;
-	std::string		_host;
-	int				_port;
-	State			_state;
-	Request			_request;
-	Response		_response;
-	CGI*			_cgi;
-	size_t			_sendOffset;
-	time_t			_lastActivity;
+	int					_fd;
+	std::string			_host;
+	int					_port;
+	State				_state;
+	Request				_request;
+	Response			_response;
+	CGI*				_cgi;
+	const ServerConfig*	_matchedServer;
+	size_t				_sendOffset;
+	time_t				_lastActivity;
 
 	Client(const Client&);
 	Client& operator=(const Client&);

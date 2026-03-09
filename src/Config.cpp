@@ -301,9 +301,20 @@ void Config::_validateConfig() {
 		// Check for duplicate listen addresses
 		for (size_t j = i + 1; j < _servers.size(); ++j) {
 			if (_servers[j].host == server.host && _servers[j].port == server.port) {
-				// Same host:port is OK if they have different server_names
-				// (virtual hosts), but since we don't implement virtual hosts
-				// fully, we allow it and rely on first-match
+				// Same host:port with different server_names = virtual hosting (allowed)
+				bool hasDifferentNames = false;
+				if (!server.serverNames.empty() && !_servers[j].serverNames.empty()) {
+					for (size_t k = 0; k < server.serverNames.size(); ++k) {
+						for (size_t l = 0; l < _servers[j].serverNames.size(); ++l) {
+							if (server.serverNames[k] != _servers[j].serverNames[l])
+								hasDifferentNames = true;
+						}
+					}
+				}
+				if (!hasDifferentNames) {
+					LOG_WARN("Duplicate server on " << server.host << ":" << server.port
+							 << " (same server_name). Second block will be ignored.");
+				}
 			}
 		}
 

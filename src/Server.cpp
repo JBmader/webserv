@@ -251,11 +251,13 @@ void Server::_pollLoop() {
 			 it != _clients.end(); ++it) {
 			if (it->second->getState() == Client::STATE_PROCESSING) {
 				it->second->process(_config);
-				// If CGI was started, add CGI pipe to poll
+				// If CGI was started, add CGI pipes to poll
 				CGI* cgi = it->second->getCGI();
 				if (cgi) {
 					if (cgi->getOutputFd() >= 0)
 						_addPollFd(cgi->getOutputFd(), POLLIN);
+					if (cgi->getInputFd() >= 0 && !cgi->isBodyWritten())
+						_addPollFd(cgi->getInputFd(), POLLOUT);
 				}
 			}
 		}
@@ -265,18 +267,17 @@ void Server::_pollLoop() {
 			 it != _clients.end(); ++it) {
 			CGI* cgi = it->second->getCGI();
 			if (cgi && it->second->getState() == Client::STATE_CGI_RUNNING) {
+				// Try to reap zombie children
+				cgi->reapChild();
 				if (cgi->isDone()) {
 					it->second->finalizeCGI();
 				} else if (cgi->checkTimeout()) {
-					// Remove CGI pipe from poll
+					// Remove CGI pipes from poll
 					if (cgi->getOutputFd() >= 0)
 						_removePollFd(cgi->getOutputFd());
 					if (cgi->getInputFd() >= 0)
 						_removePollFd(cgi->getInputFd());
 					cgi->kill();
-					ServerConfig defaultServer;
-					// We can't easily get the server config here, use default
-					// The response will still have proper status code
 					it->second->finalizeCGI();
 				}
 			}
@@ -306,7 +307,11 @@ void Server::_acceptConnection(int listenFd) {
 		return;
 
 	// Set non-blocking
-	fcntl(clientFd, F_SETFL, O_NONBLOCK);
+	if (fcntl(clientFd, F_SETFL, O_NONBLOCK) < 0) {
+		LOG_ERROR("fcntl() failed on client fd");
+		close(clientFd);
+		return;
+	}
 
 	// Get the host:port this listen socket is bound to
 	std::string host = "0.0.0.0";
@@ -317,7 +322,13 @@ void Server::_acceptConnection(int listenFd) {
 		port = it->second.second;
 	}
 
-	Client* client = new Client(clientFd, host, port);
+	// Find max body size from server config matching this port
+	size_t maxBody = 1048576; // 1MB default
+	const ServerConfig* serverConf = _config.findServer("", port);
+	if (serverConf)
+		maxBody = serverConf->clientMaxBody;
+
+	Client* client = new Client(clientFd, host, port, maxBody);
 	_clients[clientFd] = client;
 	_addPollFd(clientFd, POLLIN | POLLOUT);
 }
@@ -357,8 +368,17 @@ void Server::_handleCGIRead(int fd) {
 }
 
 void Server::_handleCGIWrite(int fd) {
-	// Not typically used since we write body immediately, but keep for completeness
-	(void)fd;
+	for (std::map<int, Client*>::iterator it = _clients.begin();
+		 it != _clients.end(); ++it) {
+		CGI* cgi = it->second->getCGI();
+		if (cgi && cgi->getInputFd() == fd) {
+			bool done = cgi->writeBody();
+			if (done) {
+				_removePollFd(fd);
+			}
+			return;
+		}
+	}
 }
 
 void Server::_removeClient(int fd) {

@@ -3,14 +3,14 @@
 
 CGI::CGI()
 	: _pid(-1), _inputFd(-1), _outputFd(-1), _done(false),
-	  _bodyWritten(false), _startTime(0) {
+	  _bodyWritten(false), _startTime(0), _bodyWriteOffset(0) {
 }
 
 CGI::~CGI() {
 	closeFds();
 	if (_pid > 0) {
 		::kill(_pid, SIGKILL);
-		waitpid(_pid, NULL, WNOHANG);
+		waitpid(_pid, NULL, 0);
 	}
 }
 
@@ -160,24 +160,51 @@ bool CGI::execute(const Request& req, const LocationConfig& location,
 	return true;
 }
 
-bool CGI::writeBody(const std::string& body) {
+void CGI::setBody(const std::string& body) {
+	_bodyToWrite = body;
+	_bodyWriteOffset = 0;
+	if (body.empty()) {
+		close(_inputFd);
+		_inputFd = -1;
+		_bodyWritten = true;
+	}
+}
+
+bool CGI::writeBody() {
 	if (_bodyWritten || _inputFd < 0)
 		return true;
 
-	if (body.empty()) {
+	size_t remaining = _bodyToWrite.size() - _bodyWriteOffset;
+	if (remaining == 0) {
 		close(_inputFd);
 		_inputFd = -1;
 		_bodyWritten = true;
 		return true;
 	}
 
-	ssize_t n = write(_inputFd, body.c_str(), body.size());
-	// Close stdin pipe after writing (CGI expects EOF)
-	close(_inputFd);
-	_inputFd = -1;
-	_bodyWritten = true;
+	ssize_t n = write(_inputFd, _bodyToWrite.c_str() + _bodyWriteOffset, remaining);
+	if (n > 0) {
+		_bodyWriteOffset += n;
+		if (_bodyWriteOffset >= _bodyToWrite.size()) {
+			close(_inputFd);
+			_inputFd = -1;
+			_bodyWritten = true;
+			return true;
+		}
+		return false;
+	}
+	if (n <= 0) {
+		// Write failed or returned 0 -- close pipe, CGI gets truncated input
+		close(_inputFd);
+		_inputFd = -1;
+		_bodyWritten = true;
+		return true;
+	}
+	return false;
+}
 
-	return n >= 0;
+bool CGI::isBodyWritten() const {
+	return _bodyWritten;
 }
 
 bool CGI::readOutput() {
@@ -189,22 +216,32 @@ bool CGI::readOutput() {
 
 	if (n > 0) {
 		_output.append(buf, n);
-		return false; // more to read potentially
+		return false;
 	}
 
 	if (n == 0) {
-		// EOF — CGI finished writing
+		// EOF -- CGI finished writing
 		close(_outputFd);
 		_outputFd = -1;
+		// Reap child non-blocking
+		reapChild();
 		_done = true;
-		// Reap child
-		int status;
-		waitpid(_pid, &status, 0);
-		_pid = -1;
 		return true;
 	}
 
-	// n < 0 — EAGAIN or error
+	// n < 0 -- EAGAIN or error
+	return false;
+}
+
+bool CGI::reapChild() {
+	if (_pid <= 0)
+		return true;
+	int status;
+	pid_t ret = waitpid(_pid, &status, WNOHANG);
+	if (ret > 0) {
+		_pid = -1;
+		return true;
+	}
 	return false;
 }
 
@@ -217,8 +254,9 @@ bool CGI::checkTimeout() {
 void CGI::kill() {
 	if (_pid > 0) {
 		::kill(_pid, SIGKILL);
+		// Blocking waitpid after SIGKILL is safe -- child will die immediately
 		int status;
-		waitpid(_pid, &status, WNOHANG);
+		waitpid(_pid, &status, 0);
 		_pid = -1;
 	}
 	closeFds();

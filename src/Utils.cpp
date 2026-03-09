@@ -116,6 +116,7 @@ std::string getStatusText(int code) {
 		case 501: return "Not Implemented";
 		case 502: return "Bad Gateway";
 		case 504: return "Gateway Timeout";
+		case 505: return "HTTP Version Not Supported";
 		default:  return "Unknown";
 	}
 }
@@ -135,6 +136,8 @@ std::string urlDecode(const std::string& s) {
 		if (s[i] == '%' && i + 2 < s.size()) {
 			std::string hex = s.substr(i + 1, 2);
 			char c = static_cast<char>(strtol(hex.c_str(), NULL, 16));
+			if (c == '\0')
+				continue; // reject null bytes
 			result += c;
 			i += 2;
 		} else if (s[i] == '+') {
@@ -216,6 +219,22 @@ std::string defaultErrorPage(int code) {
 	return "<!DOCTYPE html>\n<html>\n<head><title>" + codeStr + " " + text +
 		   "</title></head>\n<body>\n<center><h1>" + codeStr + " " + text +
 		   "</h1></center>\n<hr>\n<center>" + SERVER_NAME + "</center>\n</body>\n</html>\n";
+}
+
+std::string htmlEscape(const std::string& s) {
+	std::string result;
+	result.reserve(s.size());
+	for (size_t i = 0; i < s.size(); ++i) {
+		switch (s[i]) {
+			case '&':  result += "&amp;";  break;
+			case '<':  result += "&lt;";   break;
+			case '>':  result += "&gt;";   break;
+			case '"':  result += "&quot;";  break;
+			case '\'': result += "&#39;";  break;
+			default:   result += s[i];     break;
+		}
+	}
+	return result;
 }
 
 std::vector<std::string> split(const std::string& s, char delim) {

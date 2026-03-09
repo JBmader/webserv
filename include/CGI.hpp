@@ -21,8 +21,10 @@ public:
 	bool	isDone() const;
 	time_t	getStartTime() const;
 
-	// Feed body to CGI stdin (non-blocking)
-	bool	writeBody(const std::string& body);
+	// Feed body to CGI stdin (non-blocking, called via poll POLLOUT)
+	void	setBody(const std::string& body);
+	bool	writeBody();
+	bool	isBodyWritten() const;
 
 	// Read CGI output (non-blocking)
 	bool	readOutput();
@@ -32,6 +34,7 @@ public:
 	void	closeFds();
 	bool	checkTimeout();
 	void	kill();
+	bool	reapChild();
 
 private:
 	pid_t		_pid;
@@ -41,6 +44,8 @@ private:
 	bool		_done;
 	bool		_bodyWritten;
 	time_t		_startTime;
+	std::string	_bodyToWrite;
+	size_t		_bodyWriteOffset;
 
 	std::vector<std::string>	_buildEnv(const Request& req,
 										  const LocationConfig& location,

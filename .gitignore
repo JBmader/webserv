@@ -1,0 +1,7 @@
+obj/
+webserv
+*.o
+*.dSYM
+.DS_Store
+www/upload/*
+!www/upload/.gitkeep

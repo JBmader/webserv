@@ -95,7 +95,7 @@ bool Request::_parseRequestLine() {
 
 	// Validate version
 	if (_version != "HTTP/1.0" && _version != "HTTP/1.1") {
-		_errorCode = 400;
+		_errorCode = 505;
 		_state = PARSE_ERROR;
 		return true;
 	}

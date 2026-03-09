@@ -1,8 +1,0 @@
-[DEBUG] GET / from fd=4
-[DEBUG] Response: HTTP/1.1 200 OK size=1456
-[DEBUG] Keep-alive reset, raw remaining=0 bytes
-[DEBUG] After feed: state=0 complete=0 raw=0
-[DEBUG] POST / from fd=4
-[DEBUG] Response: HTTP/1.1 200 OK size=1456
-[DEBUG] Keep-alive reset, raw remaining=0 bytes
-[DEBUG] After feed: state=0 complete=0 raw=0

@@ -135,11 +135,15 @@ void Response::_handleGet(const Request& req, const ServerConfig& server,
 }
 
 void Response::_serveFile(const std::string& path, const ServerConfig& server) {
-	std::string body = Utils::readFile(path);
-	if (body.empty() && !Utils::fileExists(path)) {
+	if (!Utils::fileExists(path)) {
 		buildError(404, server);
 		return;
 	}
+	if (access(path.c_str(), R_OK) != 0) {
+		buildError(403, server);
+		return;
+	}
+	std::string body = Utils::readFile(path);
 
 	std::map<std::string, std::string> headers;
 	headers["Content-Type"] = Utils::getMimeType(path);
@@ -155,8 +159,9 @@ void Response::_serveAutoindex(const std::string& path, const std::string& uri) 
 		return;
 	}
 
-	std::string body = "<!DOCTYPE html>\n<html>\n<head><title>Index of " + uri +
-					   "</title></head>\n<body>\n<h1>Index of " + uri + "</h1>\n<hr>\n<pre>\n";
+	std::string safeUri = Utils::htmlEscape(uri);
+	std::string body = "<!DOCTYPE html>\n<html>\n<head><title>Index of " + safeUri +
+					   "</title></head>\n<body>\n<h1>Index of " + safeUri + "</h1>\n<hr>\n<pre>\n";
 
 	// Ensure URI ends with /
 	std::string baseUri = uri;
@@ -177,7 +182,7 @@ void Response::_serveAutoindex(const std::string& path, const std::string& uri) 
 
 	for (size_t i = 0; i < entries.size(); ++i) {
 		std::string fullPath = Utils::joinPath(path, entries[i]);
-		std::string display = entries[i];
+		std::string display = Utils::htmlEscape(entries[i]);
 		if (Utils::isDirectory(fullPath))
 			display += "/";
 		body += "<a href=\"" + baseUri + entries[i];
@@ -219,7 +224,9 @@ void Response::_handleUpload(const Request& req, const LocationConfig& location,
 	std::string uploadDir = location.uploadPath;
 
 	// Create upload directory if it doesn't exist
-	// (stat check - we can't call mkdir in C++98 easily, so assume it exists)
+	if (!Utils::isDirectory(uploadDir)) {
+		mkdir(uploadDir.c_str(), 0755);
+	}
 
 	std::string filename;
 	std::string fileContent;

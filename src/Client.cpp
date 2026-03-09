@@ -2,9 +2,10 @@
 #include "Router.hpp"
 #include "Utils.hpp"
 
-Client::Client(int fd, const std::string& host, int port)
+Client::Client(int fd, const std::string& host, int port, size_t maxBodySize)
 	: _fd(fd), _host(host), _port(port), _state(STATE_READING),
-	  _cgi(NULL), _sendOffset(0), _lastActivity(time(NULL)) {
+	  _cgi(NULL), _matchedServer(NULL), _sendOffset(0), _lastActivity(time(NULL)) {
+	_request.setMaxBodySize(maxBodySize);
 }
 
 Client::~Client() {
@@ -72,7 +73,7 @@ bool Client::sendData() {
 	}
 
 	ssize_t n = send(_fd, data.c_str() + _sendOffset, remaining, 0);
-	if (n < 0)
+	if (n <= 0)
 		return false;
 
 	_sendOffset += n;
@@ -131,8 +132,9 @@ void Client::process(const Config& config) {
 			_state = STATE_SENDING;
 			return;
 		}
-		// Write the request body to CGI stdin
-		_cgi->writeBody(_request.getBody());
+		// Store body for poll-driven writing to CGI stdin
+		_cgi->setBody(_request.getBody());
+		_matchedServer = server;
 		_state = STATE_CGI_RUNNING;
 		return;
 	}
@@ -146,17 +148,8 @@ void Client::finalizeCGI() {
 	if (!_cgi || !_cgi->isDone())
 		return;
 
-	// Find the server config again for error pages
-	std::string hostHeader = _request.getHeader("Host");
-	std::string hostname = hostHeader;
-	size_t colonPos = hostHeader.find(':');
-	if (colonPos != std::string::npos)
-		hostname = hostHeader.substr(0, colonPos);
-
 	ServerConfig defaultServer;
-	const ServerConfig* server = &defaultServer;
-	// We need the config but don't store it; use a default for CGI errors
-	// In practice the Server class will handle this
+	const ServerConfig* server = _matchedServer ? _matchedServer : &defaultServer;
 
 	if (_cgi->getOutput().empty()) {
 		_response.buildError(502, *server);
@@ -166,5 +159,6 @@ void Client::finalizeCGI() {
 
 	delete _cgi;
 	_cgi = NULL;
+	_matchedServer = NULL;
 	_state = STATE_SENDING;
 }

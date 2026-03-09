@@ -26,6 +26,7 @@ bool		isRegularFile(const std::string& path);
 std::string	sanitizePath(const std::string& path);
 std::string	joinPath(const std::string& a, const std::string& b);
 std::string	defaultErrorPage(int code);
+std::string	htmlEscape(const std::string& s);
 std::vector<std::string>	split(const std::string& s, char delim);
 
 }
