@@ -144,12 +144,3 @@ server {
 - [Beej's Guide to Network Programming](https://beej.us/guide/bgnet/) — socket programming fundamentals.
 - [HTTP Made Really Easy](https://www.jmarshall.com/easy/http/) — simplified HTTP overview.
 
-### AI Usage
-
-AI tools (GitHub Copilot / Claude) were used as an assistant during development for the following tasks:
-- **Project planning** — structuring the implementation into phases and defining the architecture.
-- **Code scaffolding** — generating initial boilerplate for classes and functions.
-- **Debugging** — identifying issues such as relative CGI script paths and pipe handling.
-- **Documentation** — drafting this README.
-
-All AI-generated content was reviewed, understood, and tested before inclusion. The core logic (HTTP parsing, event loop, CGI pipe management, configuration parsing) was developed with full understanding of each component.

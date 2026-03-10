@@ -5,3 +5,14 @@ webserv
 .DS_Store
 www/upload/*
 !www/upload/.gitkeep
+server_debug.log
+*.log
+
+# Defense / evaluation docs (NEVER push)
+ARTURUS_WEBSERV.md
+WEBSERV_NOTES_HUGO.md
+*_NOTES_*.md
+*eval*
+*correction*
+*defense*
+*cheatsheet*
