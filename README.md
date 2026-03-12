@@ -134,6 +134,17 @@ server {
 | `cgi_ext` | location | CGI file extension (e.g. `.py`) |
 | `cgi_path` | location | Path to CGI interpreter |
 
+## AI Disclaimer
+
+AI tools were used during the development of this project for the following purposes:
+
+- **Writing and structuring this README.**
+- **Researching concepts** — HTTP protocol details, CGI specification, poll() behavior, etc.
+- **Repetitive/boilerplate work** — generating MIME type mappings, status code tables, and similar mechanical tasks.
+- **Code commenting** — all comments throughout the codebase (in both English and French) were written with AI assistance for better clarity and consistency.
+
+All actual implementation (architecture, logic, algorithms, debugging) was done by the team.
+
 ## Resources
 
 ### References
